@@ -1,0 +1,8 @@
+name=16351_tweets_in_English.txt
+nb_entries=16351
+entry_1=taken walk home very misty heath hounslow heath
+expected_result_row_1_col_1=Topic 0
+expected_result_row_1_col_2=Topic 1
+expected_result_row_1_col_3=Topic 2
+
+

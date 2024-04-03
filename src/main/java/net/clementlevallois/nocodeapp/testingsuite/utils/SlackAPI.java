@@ -1,7 +1,7 @@
 /*
  * Copyright Clement Levallois 2021-2023. License Attribution 4.0 Intertnational (CC BY 4.0)
  */
-package net.clementlevallois.nocodeapp.testingsuite.slack;
+package net.clementlevallois.nocodeapp.testingsuite.utils;
 
 import com.slack.api.Slack;
 import com.slack.api.methods.MethodsClient;
@@ -18,9 +18,9 @@ import java.util.Properties;
  */
 public class SlackAPI {
 
-    private String apiKey;
-    private Slack slack;
-    private MethodsClient methods;
+    private final String apiKey;
+    private final Slack slack;
+    private final MethodsClient methods;
     private boolean sendMessages = false;
 
     public static void main(String args[]) throws IOException, SlackApiException {

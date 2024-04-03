@@ -1,0 +1,14 @@
+name=2_sentences_in_English.txt
+nb_entries=2
+entry_1=I love chocolate
+expected_result_row_1_col_1=numéro de ligne
+expected_result_row_1_col_2=texte fourni en entrée
+expected_result_row_1_col_3=sentiment
+expected_result_row_2_col_1=1
+expected_result_row_2_col_2=I love chocolate
+expected_result_row_2_col_3=🤗 sentiment positif
+expected_result_row_3_col_1=2
+expected_result_row_3_col_2=I hate acid food
+expected_result_row_3_col_3=😔 sentiment négatif
+
+
