@@ -43,16 +43,18 @@ public class TestingSuite {
     private static final boolean EXIT_AFTER_MESSAGE = true;
     private static final boolean SILENT_LOGGING = true;
     private static SlackAPI slackAPI;
+    private List<WebDriver> webDrivers;
 
-    public static void main(String[] args) throws IOException, SlackApiException {
-        slackAPI = new SlackAPI(SEND_MESAGES_TO_SLACK);
+    public static void main(String[] args) {
+        TestingSuite testingSuite = new TestingSuite();
+        testingSuite.initiateSlackAPI();
+        testingSuite.initiateWebDrivers();
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-        slackAPI.sendMessage("initializing the test suite", false);
 
         Runnable task = new Runnable() {
             @Override
             public void run() {
-                runTests();
+                testingSuite.runTests();
                 scheduler.schedule(this, 1, TimeUnit.HOURS);
             }
         };
@@ -60,9 +62,17 @@ public class TestingSuite {
         scheduler.execute(task);
     }
 
-    private static void runTests() {
+    private void initiateSlackAPI() {
+        try {
+            slackAPI = new SlackAPI(SEND_MESAGES_TO_SLACK);
+            slackAPI.sendMessage("initializing the test suite", false);
+        } catch (IOException | SlackApiException ex) {
+            Logger.getLogger(TestingSuite.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
 
-        List<WebDriver> webDrivers = new ArrayList();
+    private void initiateWebDrivers() {
+        webDrivers = new ArrayList();
         ChromeOptions chromeOptions = new ChromeOptions();
         String userAgent = "--user-agent=Mozilla/5.0 (compatible; MyRobot/1.0; +http://www.example.com/robot) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
         String headlessParam = "--headless";
@@ -77,20 +87,19 @@ public class TestingSuite {
         Map<String, Object> prefs = new HashMap();
         prefs.put("intl.accept_languages", "fr");
         prefs.put("intl.selected_languages", "fr");
-        boolean testingFromWindows = System.getProperty("os.name").toLowerCase().contains("win");
         Properties properties = loadProperties();
-        String downloadDirectory;
-        if (testingFromWindows) {
-            downloadDirectory = properties.getProperty("local-path-download");
-        } else {
-            downloadDirectory = properties.getProperty("local-path-download");
-        }
+        String downloadDirectory = downloadFolder().toString();
         prefs.put("download.default_directory", downloadDirectory);
         chromeOptions.setExperimentalOption("prefs", prefs);
         Clock clock = new Clock("initializing the Chrome Driver", SILENT_LOGGING);
         WebDriver chromeDriver = new ChromeDriver(chromeOptions);
+        System.out.println("");
         webDrivers.add(chromeDriver);
         clock.closeAndPrintClock();
+    }
+
+    private void runTests() {
+
         TestInterface testUmigon = new TestUmigon(slackAPI, EXIT_AFTER_MESSAGE);
         TestInterface testTopics = new TestTopics(slackAPI, EXIT_AFTER_MESSAGE);
         List<TestInterface> tests = List.of(testUmigon, testTopics);
