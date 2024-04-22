@@ -18,21 +18,21 @@ import java.util.Properties;
  */
 public class SlackAPI {
 
-    private final String apiKey;
-    private final Slack slack;
-    private final MethodsClient methods;
+    private String apiKey = "";
+    private Slack slack = null;
+    private MethodsClient methods = null;
     private boolean sendMessages = false;
 
     public static void main(String args[]) throws IOException, SlackApiException {
         SlackAPI slackAPI = new SlackAPI(false);
         String message = ":wave: Hi from a bot written in Java!";
-        slackAPI.sendMessage(message);
+        slackAPI.sendMessage(message, true);
     }
 
     public SlackAPI(boolean sendessages) {
-        apiKey = getApiKey();
-        slack = Slack.getInstance();
-        methods = slack.methods(apiKey);
+        this.apiKey = getApiKey();
+        this.slack = Slack.getInstance();
+        this.methods = slack.methods(apiKey);
         this.sendMessages = sendessages;
     }
 
@@ -52,7 +52,8 @@ public class SlackAPI {
         return apiKey;
     }
 
-    public void sendMessage(String message) throws IOException, SlackApiException {
+    public void sendMessage(String message, boolean exitAfterMessage) throws IOException, SlackApiException {
+        System.out.println(message);
         if (!sendMessages) {
             return;
         }
@@ -64,9 +65,15 @@ public class SlackAPI {
         if (!response.isOk()) {
             System.out.println("error: " + response.getError());
         }
+
+        if (exitAfterMessage) {
+            // EXITING TO AVOID AN ACCUMULATION OF MSG
+            System.exit(-1);
+        }
     }
 
-    public void sendMessage(String function, String message) throws IOException, SlackApiException {
+    public void sendMessage(String function, String message, boolean exitAfterMessage) throws IOException, SlackApiException {
+        System.out.println(function + ": " + message);
         if (!sendMessages) {
             return;
         }
@@ -78,6 +85,11 @@ public class SlackAPI {
         ChatPostMessageResponse response = methods.chatPostMessage(request);
         if (!response.isOk()) {
             System.out.println("error: " + response.getError());
+        }
+
+        if (exitAfterMessage) {
+            // EXITING TO AVOID AN ACCUMULATION OF MSG
+            System.exit(-1);
         }
     }
 }

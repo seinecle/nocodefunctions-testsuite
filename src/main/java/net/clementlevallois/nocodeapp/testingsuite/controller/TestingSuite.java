@@ -3,6 +3,8 @@
  */
 package net.clementlevallois.nocodeapp.testingsuite.controller;
 
+import net.clementlevallois.nocodeapp.testingsuite.functions.TestInterface;
+import com.slack.api.methods.SlackApiException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -23,6 +25,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 import net.clementlevallois.nocodeapp.testingsuite.functions.TestTopics;
+import net.clementlevallois.nocodeapp.testingsuite.utils.SlackAPI;
+import net.clementlevallois.utils.Clock;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
@@ -33,18 +37,23 @@ import org.openqa.selenium.chrome.ChromeOptions;
  */
 public class TestingSuite {
 
-    private static final boolean SEND_MESAGES_TO_SLACK = false;
-    private static final boolean TESTING_LOCALLY_DEPLOYED = true;
+    private static final boolean SEND_MESAGES_TO_SLACK = true;
+    private static final boolean TESTING_LOCALLY_DEPLOYED = false;
     private static final boolean HEADLESS = true;
+    private static final boolean EXIT_AFTER_MESSAGE = true;
+    private static final boolean SILENT_LOGGING = true;
+    private static SlackAPI slackAPI;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException, SlackApiException {
+        slackAPI = new SlackAPI(SEND_MESAGES_TO_SLACK);
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        slackAPI.sendMessage("initializing the test suite", false);
 
         Runnable task = new Runnable() {
             @Override
             public void run() {
                 runTests();
-                scheduler.schedule(this, 30, TimeUnit.SECONDS);
+                scheduler.schedule(this, 1, TimeUnit.HOURS);
             }
         };
 
@@ -65,19 +74,27 @@ public class TestingSuite {
             List<String> arguments = List.of(userAgent);
             chromeOptions.addArguments(arguments);
         }
-
         Map<String, Object> prefs = new HashMap();
         prefs.put("intl.accept_languages", "fr");
         prefs.put("intl.selected_languages", "fr");
+        boolean testingFromWindows = System.getProperty("os.name").toLowerCase().contains("win");
+        Properties properties = loadProperties();
+        String downloadDirectory;
+        if (testingFromWindows) {
+            downloadDirectory = properties.getProperty("local-path-download");
+        } else {
+            downloadDirectory = properties.getProperty("local-path-download");
+        }
+        prefs.put("download.default_directory", downloadDirectory);
         chromeOptions.setExperimentalOption("prefs", prefs);
-
+        Clock clock = new Clock("initializing the Chrome Driver", SILENT_LOGGING);
         WebDriver chromeDriver = new ChromeDriver(chromeOptions);
         webDrivers.add(chromeDriver);
-
-        TestInterface testUmigon = new TestUmigon(SEND_MESAGES_TO_SLACK);
-        TestInterface testTopics = new TestTopics(SEND_MESAGES_TO_SLACK);
-//        List<TestInterface> tests = List.of(testUmigon, testTopics);
-        List<TestInterface> tests = List.of(testTopics);
+        clock.closeAndPrintClock();
+        TestInterface testUmigon = new TestUmigon(slackAPI, EXIT_AFTER_MESSAGE);
+        TestInterface testTopics = new TestTopics(slackAPI, EXIT_AFTER_MESSAGE);
+        List<TestInterface> tests = List.of(testUmigon, testTopics);
+        //            List<TestInterface> tests = List.of(testTopics);
 //        List<TestInterface> tests = List.of(testUmigon);
         LocalDateTime now = LocalDateTime.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -94,7 +111,7 @@ public class TestingSuite {
     public static String domain() {
         boolean testingFromWindows = System.getProperty("os.name").toLowerCase().contains("win");
         String domain;
-        if (testingFromWindows && TESTING_LOCALLY_DEPLOYED) {
+        if (testingFromWindows & TESTING_LOCALLY_DEPLOYED) {
             domain = "http://localhost:8080/nocode-app-web-front/";
         } else {
             domain = "https://nocodefunctions.com";
@@ -102,8 +119,7 @@ public class TestingSuite {
         return domain;
     }
 
-    public static Path rootFolder() {
-        boolean testingFromWindows = System.getProperty("os.name").toLowerCase().contains("win");
+    private static Properties loadProperties() {
         String resourcePath = "/private/read.txt";
         Properties properties = new Properties();
         try (InputStream inputStream = TestingSuite.class.getResourceAsStream(resourcePath)) {
@@ -114,8 +130,14 @@ public class TestingSuite {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        return properties;
+    }
+
+    public static Path rootFolder() {
+        Properties properties = loadProperties();
+        boolean testingFromWindows = System.getProperty("os.name").toLowerCase().contains("win");
         Path rootFolder;
-        if (testingFromWindows && TESTING_LOCALLY_DEPLOYED) {
+        if (testingFromWindows) {
             String pathLocal = properties.getProperty("local-path");
             rootFolder = Path.of(pathLocal);
         } else {
@@ -127,18 +149,9 @@ public class TestingSuite {
 
     public static Path downloadFolder() {
         boolean testingFromWindows = System.getProperty("os.name").toLowerCase().contains("win");
-        String resourcePath = "/private/read.txt";
-        Properties properties = new Properties();
-        try (InputStream inputStream = TestingSuite.class.getResourceAsStream(resourcePath)) {
-            if (inputStream == null) {
-                throw new IOException("Resource not found: " + resourcePath);
-            }
-            properties.load(inputStream);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        Properties properties = loadProperties();
         Path rootFolder;
-        if (testingFromWindows && TESTING_LOCALLY_DEPLOYED) {
+        if (testingFromWindows) {
             String pathLocal = properties.getProperty("local-path-download");
             rootFolder = Path.of(pathLocal);
         } else {
@@ -154,21 +167,23 @@ public class TestingSuite {
         try (Stream<Path> paths = Files.walk(downloadFolder)) {
             paths.filter(Files::isRegularFile)
                     .filter(path -> {
-                        try {
-                            return Files.getLastModifiedTime(path).toMillis() > oneHourAgo;
-                        } catch (IOException e) {
-                            return false;
-                        }
+                        String fileExtension = path.toFile().getName();
+                        boolean shouldBeDeleted = fileExtension.endsWith(".gexf") || fileExtension.endsWith(".xlsx");
+                        return shouldBeDeleted;
                     })
                     .forEach(path -> {
                         try {
                             Files.deleteIfExists(path);
                         } catch (IOException e) {
-                            // Handle the potential IOException
                         }
                     });
         } catch (IOException ex) {
             Logger.getLogger(TestingSuite.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
+
+    public static boolean isSILENT_LOGGING() {
+        return SILENT_LOGGING;
+    }
+
 }

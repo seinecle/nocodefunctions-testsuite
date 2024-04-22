@@ -8,7 +8,6 @@ import com.slack.api.methods.SlackApiException;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,9 +21,9 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import net.clementlevallois.importers.model.CellRecord;
 import net.clementlevallois.importers.model.SheetModel;
-import net.clementlevallois.nocodeapp.testingsuite.controller.TestInterface;
 import net.clementlevallois.nocodeapp.testingsuite.controller.TestingSuite;
 import net.clementlevallois.nocodeapp.testingsuite.utils.SlackAPI;
+import net.clementlevallois.utils.Clock;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
@@ -41,16 +40,18 @@ public class TestUmigon implements TestInterface {
     private static final String NAME = "umigon";
     private final String domain;
     private final Path rootFolder;
+    private Boolean exitAfterMessage = false;
 
     @Override
     public String getName() {
         return NAME;
     }
 
-    public TestUmigon(boolean sendMessagesToSlack) {
-        slackAPI = new SlackAPI(sendMessagesToSlack);
+    public TestUmigon(SlackAPI slackAPI, boolean exitAfterMessage) {
+        this.slackAPI = slackAPI;
         domain = TestingSuite.domain();
         rootFolder = TestingSuite.rootFolder();
+        this.exitAfterMessage = exitAfterMessage;
     }
 
     @Override
@@ -64,8 +65,7 @@ public class TestUmigon implements TestInterface {
                 boolean isTitleFirstPageOK = urlOfCurrentPage.contains(NAME + "/sentiment_analysis_tool.html");
                 if (!isTitleFirstPageOK) {
                     String errorMessage = "error when loading first page";
-                    System.out.println(NAME + ": " + errorMessage);
-                    slackAPI.sendMessage(NAME, errorMessage);
+                    slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                 }
 
                 List<String> testFiles = List.of("file_1.txt");
@@ -73,6 +73,7 @@ public class TestUmigon implements TestInterface {
                 System.out.print(" (");
                 int indexTestFiles = 0;
                 for (String testFile : testFiles) {
+                    Clock clock = new Clock("reading properties for test file" + testFile, TestingSuite.isSILENT_LOGGING());
                     Properties descriptorForOneTestFile = new Properties();
                     try (BufferedReader reader = new BufferedReader(
                             new InputStreamReader(TestUmigon.class.getResourceAsStream("/" + NAME + "/" + testFile), "UTF-8"))) {
@@ -87,9 +88,11 @@ public class TestUmigon implements TestInterface {
                     if (++indexTestFiles < testFiles.size()) {
                         System.out.print(", ");
                     }
+                    clock.closeAndPrintClock();
                     int nbEntries = Integer.parseInt(descriptorForOneTestFile.getProperty("nb_entries"));
 
                     // loading page for txt file upload
+                    clock = new Clock("clicking on text in bulk import option", TestingSuite.isSILENT_LOGGING());
                     WebElement button = webDriver.findElement(By.id("textInBulkButton_1"));
                     button.click();
                     Thread.sleep(Duration.ofSeconds(2));
@@ -97,13 +100,16 @@ public class TestUmigon implements TestInterface {
                     boolean isUrlUploadPageOK = urlOfCurrentPage.contains("import_your_data_bulk_text.html") && urlOfCurrentPage.contains("function=" + NAME);
                     if (!isUrlUploadPageOK) {
                         String errorMessage = "error when loading import data in bulk text page";
-                        System.out.println(NAME + ": " + errorMessage);
-                        slackAPI.sendMessage(NAME, errorMessage);
+                        slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                     }
+                    clock.closeAndPrintClock();
 
                     // we are now on the text file upload page
+                    clock = new Clock("operations for text file upload", TestingSuite.isSILENT_LOGGING());
                     WebElement webElement = webDriver.findElement(By.id("launchButtons:fileUploadButton_input"));
-                    webElement.sendKeys(rootFolder.toString() + File.separator + NAME + File.separator + testFileName);
+                    String pathToFileToUplad = rootFolder.toString() + File.separator + NAME + File.separator + testFileName;
+                    clock.printIntermediaryText("path to file to upload: "+ pathToFileToUplad);
+                    webElement.sendKeys(pathToFileToUplad);
                     WebElement uploadButton = webDriver.findElement(By.className("ui-fileupload-upload"));
                     if (!uploadButton.getAttribute("class").contains("ui-state-disabled")) {
                         uploadButton.click();
@@ -112,51 +118,59 @@ public class TestUmigon implements TestInterface {
                     wait.until(ExpectedConditions.elementToBeClickable(By.id("launchButtons:readFileBtn")));
                     button = webDriver.findElement(By.id("launchButtons:readFileBtn"));
                     button.click();
+                    clock.closeAndPrintClock();
 
                     // click on the "compute" button of the import txt file page
+                    clock = new Clock("clicking on the compute button to move to the param page", TestingSuite.isSILENT_LOGGING());
                     wait.until(ExpectedConditions.elementToBeClickable(By.id("formComputeButton:computeButton")));
                     button = webDriver.findElement(By.id("formComputeButton:computeButton"));
                     button.click();
                     Thread.sleep(Duration.ofSeconds(2));
+                    clock.closeAndPrintClock();
 
                     // we are now on the param page for the function
+                    clock = new Clock("clicking on compute without changing params", TestingSuite.isSILENT_LOGGING());
                     urlOfCurrentPage = webDriver.getCurrentUrl();
                     boolean isUrlParamPageOK = urlOfCurrentPage.contains("/" + NAME + "/" + NAME + ".html");
                     if (!isUrlParamPageOK) {
                         String errorMessage = "error loading " + NAME + ".html";
-                        System.out.println(NAME + ": " + errorMessage);
-                        slackAPI.sendMessage(NAME, errorMessage);
+                        slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                     }
 
                     // Click on the "compute" button
                     WebElement computeButton = webDriver.findElement(By.id("formComputeButton:computeButton"));
                     computeButton.click();
+                    clock.closeAndPrintClock();
 
                     Thread.sleep(Duration.ofSeconds(2));
                     // we are on the result page
+                    clock = new Clock("on the results page", TestingSuite.isSILENT_LOGGING());
                     urlOfCurrentPage = webDriver.getCurrentUrl();
                     boolean isUrlresultPageOK = urlOfCurrentPage.contains(NAME + "/results.html");
                     if (!isUrlresultPageOK) {
                         String errorMessage = "error loading " + NAME + "/results.html";
-                        System.out.println(NAME + ": " + errorMessage);
-                        slackAPI.sendMessage(NAME, errorMessage);
+                        slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                     }
 
                     List<WebElement> rows = webDriver.findElements(By.cssSelector("[class='ui-datatable-data ui-widget-content'] tr"));
 
                     if (rows.size() != (nbEntries + 1)) {
                         String errorMessage = "error on " + NAME + "/results.html, there should be exactly " + (nbEntries + 1) + " rows in the table of results on the page";
-                        System.out.println(NAME + ": " + errorMessage);
-                        slackAPI.sendMessage(NAME, errorMessage);
+                        slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                     }
+                    clock.closeAndPrintClock();
 
                     // Click on the "download" button
+                    clock = new Clock("clicking on the xlsx download button", TestingSuite.isSILENT_LOGGING());
                     WebElement downloadButton = webDriver.findElement(By.id("formDownloadButton:downloadButton"));
                     downloadButton.click();
+                    clock.closeAndPrintClock();
 
                     // after a while to let the download complete, check that the results are as expected
                     Thread.sleep(Duration.ofSeconds(5));
+                    clock = new Clock("checking the correctness of results", TestingSuite.isSILENT_LOGGING());
                     checkingCorrectnessResults(descriptorForOneTestFile);
+                    clock.closeAndPrintClock();
                 }
                 System.out.print(") ");
 
@@ -164,7 +178,7 @@ public class TestUmigon implements TestInterface {
                 String errorMessage = "unspecified error: " + ex.getMessage();
                 System.out.println(NAME + ": " + errorMessage);
                 try {
-                    slackAPI.sendMessage(NAME, errorMessage);
+                    slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                 } catch (IOException | SlackApiException ex1) {
                     System.out.println("error sending message to Slack");
                     Logger.getLogger(TestUmigon.class.getName()).log(Level.SEVERE, null, ex1);
@@ -194,8 +208,7 @@ public class TestUmigon implements TestInterface {
 
             if (allExcelFiles == null || allExcelFiles.size() != 1) {
                 String errorMessage = "error on " + NAME + " downloaded results: not exactly one Excel result file found";
-                System.out.println(NAME + ": " + errorMessage);
-                slackAPI.sendMessage(NAME, errorMessage);
+                slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
             } else {
                 pathExcelResults = allExcelFiles.get(0);
                 List<SheetModel> sheetsModels = ExcelReader.readExcelFile(pathExcelResults);
@@ -209,8 +222,7 @@ public class TestUmigon implements TestInterface {
                 boolean correct2 = cellsRow.get(2).getRawValue().equals(descriptorForOneTestFile.getProperty("expected_result_row_1_col_3"));
                 if (!correct0 || !correct1 || !correct2) {
                     String errorMessage = "error on first row of results for test file " + descriptorForOneTestFile.getProperty("name");
-                    System.out.println(NAME + ": " + errorMessage);
-                    slackAPI.sendMessage(NAME, errorMessage);
+                    slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                 }
 
                 // checking values on row index 1
@@ -220,8 +232,7 @@ public class TestUmigon implements TestInterface {
                 correct2 = cellsRow.get(2).getRawValue().equals(descriptorForOneTestFile.getProperty("expected_result_row_2_col_3"));
                 if (!correct0 || !correct1 || !correct2) {
                     String errorMessage = "error on second row of results for test file " + descriptorForOneTestFile.getProperty("name");
-                    System.out.println(NAME + ": " + errorMessage);
-                    slackAPI.sendMessage(NAME, errorMessage);
+                    slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                 }
 
                 // checking values on row index 2
@@ -231,8 +242,7 @@ public class TestUmigon implements TestInterface {
                 correct2 = cellsRow.get(2).getRawValue().equals(descriptorForOneTestFile.getProperty("expected_result_row_3_col_3"));
                 if (!correct0 || !correct1 || !correct2) {
                     String errorMessage = "error on third row of results for test file " + descriptorForOneTestFile.getProperty("name");
-                    System.out.println(NAME + ": " + errorMessage);
-                    slackAPI.sendMessage(NAME, errorMessage);
+                    slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                 }
                 Files.deleteIfExists(pathExcelResults);
 

@@ -20,7 +20,6 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import net.clementlevallois.importers.model.CellRecord;
 import net.clementlevallois.importers.model.SheetModel;
-import net.clementlevallois.nocodeapp.testingsuite.controller.TestInterface;
 import net.clementlevallois.nocodeapp.testingsuite.controller.TestingSuite;
 import net.clementlevallois.nocodeapp.testingsuite.utils.ExcelReader;
 import net.clementlevallois.nocodeapp.testingsuite.utils.SlackAPI;
@@ -40,17 +39,18 @@ public class TestTopics implements TestInterface {
     private static final String NAME = "topics";
     private final String domain;
     private final Path rootFolder;
+    private Boolean exitAfterMessage = false;
 
     @Override
     public String getName() {
         return NAME;
     }
 
-    public TestTopics(boolean sendMessagesToSlack) {
-        slackAPI = new SlackAPI(sendMessagesToSlack);
+    public TestTopics(SlackAPI slackAPI, boolean exitAfterMessage) {
+        this.slackAPI = slackAPI;
         domain = TestingSuite.domain();
         rootFolder = TestingSuite.rootFolder();
-
+        this.exitAfterMessage = exitAfterMessage;
     }
 
     @Override
@@ -64,8 +64,7 @@ public class TestTopics implements TestInterface {
                 boolean isTitleFirstPageOK = urlOfCurrentPage.contains(NAME + "/topic_extraction_tool.html");
                 if (!isTitleFirstPageOK) {
                     String errorMessage = "error when loading first page";
-                    System.out.println(NAME + ": " + errorMessage);
-                    slackAPI.sendMessage(NAME, errorMessage);
+                    slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                 }
 
                 List<String> testFiles = List.of("file_1.txt");
@@ -97,8 +96,7 @@ public class TestTopics implements TestInterface {
                     boolean isUrlUploadPageOK = urlOfCurrentPage.contains("import_your_data_bulk_text.html") && urlOfCurrentPage.contains("function=" + NAME);
                     if (!isUrlUploadPageOK) {
                         String errorMessage = "error when loading import data in bulk text page";
-                        System.out.println(NAME + ": " + errorMessage);
-                        slackAPI.sendMessage(NAME, errorMessage);
+                        slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                     }
 
                     // we are now on the text file upload page
@@ -124,8 +122,7 @@ public class TestTopics implements TestInterface {
                     boolean isUrlParamPageOK = urlOfCurrentPage.contains("/" + NAME + "/" + NAME + ".html");
                     if (!isUrlParamPageOK) {
                         String errorMessage = "error loading " + NAME + ".html";
-                        System.out.println(NAME + ": " + errorMessage);
-                        slackAPI.sendMessage(NAME, errorMessage);
+                        slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                     }
 
                     // Click on the "compute" button
@@ -139,8 +136,7 @@ public class TestTopics implements TestInterface {
 
                     if (rows.size() < 5) {
                         String errorMessage = "error on " + NAME + "/results.html, there should be exactly more than 4 topics in the table of results on the page";
-                        System.out.println(NAME + ": " + errorMessage);
-                        slackAPI.sendMessage(NAME, errorMessage);
+                        slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                     }
 
                     // Click on the "download" button
@@ -157,8 +153,7 @@ public class TestTopics implements TestInterface {
             } catch (InterruptedException | IOException | SlackApiException ex) {
                 try {
                     String errorMessage = "unspecified error: " + ex.getMessage();
-                    System.out.println(NAME + ": " + errorMessage);
-                    slackAPI.sendMessage(NAME, errorMessage);
+                    slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                 } catch (IOException | SlackApiException ex1) {
                     System.out.println("error sending message to Slack");
                     Logger.getLogger(TestTopics.class.getName()).log(Level.SEVERE, null, ex1);
@@ -188,8 +183,7 @@ public class TestTopics implements TestInterface {
 
             if (allExcelFiles == null || allExcelFiles.size() != 1) {
                 String errorMessage = "error on " + NAME + " downloaded results: not exactly one Excel result file found";
-                System.out.println(NAME + ": " + errorMessage);
-                slackAPI.sendMessage(NAME, errorMessage);
+                slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
             } else {
                 pathExcelResults = allExcelFiles.get(0);
                 List<SheetModel> sheetsModels = ExcelReader.readExcelFile(pathExcelResults);
@@ -203,12 +197,9 @@ public class TestTopics implements TestInterface {
                 boolean correct2 = cellsRow.get(2).getRawValue().equals(descriptorForOneTestFile.getProperty("expected_result_row_1_col_3"));
                 if (!correct0 || !correct1 || !correct2) {
                     String errorMessage = "error on first row of results for test file " + descriptorForOneTestFile.getProperty("name");
-                    System.out.println(NAME + ": " + errorMessage);
-                    slackAPI.sendMessage(NAME, errorMessage);
+                    slackAPI.sendMessage(NAME, errorMessage, exitAfterMessage);
                 }
-
                 Files.deleteIfExists(pathExcelResults);
-
             }
         } catch (IOException | SlackApiException ex) {
             Logger.getLogger(TestUmigon.class.getName()).log(Level.SEVERE, null, ex);
